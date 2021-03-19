@@ -1,9 +1,9 @@
 use memmap::MmapOptions;
 use reader_writer::Reader;
-use snafu::{ensure, ResultExt, Snafu};
+use snafu::{ensure, OptionExt, ResultExt, Snafu};
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::num::Wrapping;
 use std::ops::Add;
 use std::path::{Path, PathBuf};
@@ -135,12 +135,75 @@ pub fn generate_patches<'a>(
         }
     }
 
-    for patch in patches {
-        println!(
-            "Patch: {:08x} -> {} ({:?})",
-            patch.address, patch.new_symbol, patch.typ
-        )
+    let output_file_name = output_file_name.as_ref();
+    let mut f = File::create(output_file_name).with_context(|| OpenFile {
+        filename: dol_file_name.to_path_buf(),
+    })?;
+
+    f.write_all(
+        r"
+/******************************************************
+ *** ApplyCodePatches_Template.cpp                  ***
+ *** This is a template file used by BuildModule.py ***
+ *** to generate DOL patching code.                 ***
+ ******************************************************/
+#include <PrimeAPI.h>
+
+// Generated Forward Decls
+"
+        .as_bytes(),
+    );
+    for patch in &patches {
+        writeln!(f, "void {};", patch.new_symbol);
     }
+    f.write_all(r"
+// Function Prototypes
+void Relocate_Addr32(void *pRelocAddress, void *pSymbolAddress);
+void Relocate_Rel24(void *pRelocAddress, void *pSymbolAddress);
+void ApplyCodePatches();
+
+// Function Implementations
+void Relocate_Addr32(void *pRelocAddress, void *pSymbolAddress)
+{
+	uint32 *pReloc = (uint32*) pRelocAddress;
+	*pReloc = (uint32) pSymbolAddress;
+}
+
+void Relocate_Rel24(void *pRelocAddress, void *pSymbolAddress)
+{
+	uint32 *pReloc = (uint32*) pRelocAddress;
+	uint32 instruction = *pReloc;
+	uint32 AA = (instruction >> 1) & 0x1;
+	*pReloc = (instruction & ~0x3FFFFFC) | (AA == 0 ? ((uint32) pSymbolAddress - (uint32) pRelocAddress) : (uint32) pSymbolAddress);
+}
+
+void ApplyCodePatches()
+{
+  ".as_bytes());
+
+    for patch in &patches {
+        let firstParen = patch.new_symbol.find('(').with_context(|| InvalidPatch {
+            patch: patch.new_symbol.clone(),
+        })?;
+        let name = &patch.new_symbol[..firstParen];
+        match patch.typ {
+            FunctionCallPatchType::Addr32 => {
+                writeln!(
+                    f,
+                    "Relocate_Addr32((void*) 0x{:08x}, reinterpret_cast<void*>(&{}));",
+                    patch.address, name
+                );
+            }
+            FunctionCallPatchType::Rel24 => {
+                writeln!(
+                    f,
+                    "Relocate_Rel24((void*) 0x{:08x}, reinterpret_cast<void*>(&{}));",
+                    patch.address, name
+                );
+            }
+        }
+    }
+    f.write_all("\n}\n".as_bytes());
 
     return Ok(());
 }
@@ -151,15 +214,10 @@ fn parse_patches(
 ) -> Result<Vec<FunctionCallPatchDef>> {
     return patches
         .map(|patch| {
-            let split: Vec<&str> = patch.as_ref().split(' ').collect();
-            ensure!(
-                split.len() == 2,
-                InvalidPatch {
-                    patch: patch.as_ref()
-                }
-            );
-            let orig_symbol = split[0];
-            let target_symbol = split[1];
+            let patch = patch.as_ref();
+            let firstSpace = patch.find(' ').with_context(|| InvalidPatch { patch })?;
+            let orig_symbol = &patch[..firstSpace];
+            let target_symbol = &patch[(firstSpace + 1)..];
             ensure!(
                 extern_sym_table.contains_key(orig_symbol),
                 UnresolvedSymbol {
