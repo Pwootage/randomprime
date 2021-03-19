@@ -185,6 +185,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "807e5847c39ad6a11eac66de492ed1406f76a260eb8656e8740cad9eabc69c27"
 
 [[package]]
+name = "dol_cxx_patch_generator"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "dol_linker",
+ "enum-map",
+ "goblin",
+ "memmap",
+ "reader_writer",
+ "scroll",
+ "snafu",
+ "structs",
+]
+
+[[package]]
 name = "dol_linker"
 version = "0.1.0"
 dependencies = [
@@ -656,6 +671,7 @@ dependencies = [
  "adler32",
  "auto_struct_macros",
  "clap",
+ "dol_cxx_patch_generator",
  "dol_linker",
  "dol_symbol_table",
  "encoding",

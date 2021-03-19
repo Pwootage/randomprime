@@ -24,6 +24,7 @@ winapi = "0.3"
 
 auto_struct_macros = { path = "auto_struct_macros" }
 dol_linker = { path = "dol_linker" }
+dol_cxx_patch_generator = { path = "dol_cxx_patch_generator" }
 dol_symbol_table = { path = "generated/dol_symbol_table" }
 libsquish_wrapper = { path = "libsquish_wrapper" }
 nod_wrapper = { path = "nod_wrapper" }
@@ -41,6 +42,7 @@ panic = "unwind"
 members = [
     "auto_struct_macros",
     "dol_linker",
+    "dol_cxx_patch_generator",
         "generated/rel_files",
         "generated/resource_info_table",
             "generated/resource_info_table/resource_info_table_macro",
