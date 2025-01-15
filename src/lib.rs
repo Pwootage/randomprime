@@ -26,6 +26,7 @@ pub mod pickup_meta;
 pub mod room_lookup;
 pub mod starting_items;
 pub mod txtr_conversions;
+pub mod collision_patch;
 
 pub trait GcDiscLookupExtensions<'a> {
     fn find_file(&self, name: &str) -> Option<&structs::FstEntry<'a>>;
