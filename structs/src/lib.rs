@@ -1,6 +1,5 @@
 #![allow(ambiguous_glob_reexports, unused_imports)]
 pub mod res_id;
-
 mod ancs;
 mod anim;
 mod bnr;
@@ -25,6 +24,7 @@ mod scly;
 mod strg;
 mod thp;
 mod txtr;
+mod collision;
 
 pub mod scly_props {
     // http://www.metroid2002.com/retromodding/wiki/User:Parax0/Sandbox
@@ -170,6 +170,7 @@ pub use mapa::*;
 pub use mapw::*;
 pub use mlvl::*;
 pub use mrea::*;
+pub use collision::*;
 pub use pak::*;
 pub use part::*;
 pub use res_id::ResId;

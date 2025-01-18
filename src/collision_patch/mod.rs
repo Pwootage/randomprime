@@ -3,9 +3,10 @@ use crate::patch_config::RoomConfig;
 use crate::patcher::PrimePatcher;
 use crate::pickup_meta;
 use memmap::Mmap;
-use reader_writer::{FourCC, Reader};
+use reader_writer::{FourCC, LCow, Readable, Reader, Writable};
 use resource_info_table::resource_info;
 use std::fs::File;
+use std::io;
 use std::io::{Read, Write};
 use std::time::Instant;
 use structs::Resource;
@@ -22,12 +23,13 @@ where
 
     println!("Created patches in {:?}", start_time.elapsed());
 
-    let mut file = output_iso;
-    file.set_len(structs::GC_DISC_LENGTH as u64)
-        .map_err(|e| format!("Failed to resize output file: {}", e))?;
-    gc_disc
-        .write(&mut file, &mut pn)
-        .map_err(|e| format!("Error writing output file: {}", e))?;
+    // temporarily disable disk writes so I don't eat up all my disk io while testing
+    // let mut file = output_iso;
+    // file.set_len(structs::GC_DISC_LENGTH as u64)
+    //     .map_err(|e| format!("Failed to resize output file: {}", e))?;
+    // gc_disc
+    //     .write(&mut file, &mut pn)
+    //     .map_err(|e| format!("Error writing output file: {}", e))?;
     pn.notify_flushing_to_disk();
     Ok(())
 }
@@ -47,44 +49,6 @@ fn build_and_run_collision_patches<'r>(gc_disc: &mut structs::GcDisc<'r>) -> Res
         }
     }
 
-    // for (room, room_config) in other_patches {
-    // if let Some(connections) = room_config.add_connections.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         crate::patches::patch_add_connections(ps, area, connections)
-    //     });
-    // }
-    //
-    // if let Some(connections) = room_config.remove_connections.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         crate::patches::patch_remove_connections(ps, area, connections)
-    //     });
-    // }
-    //
-    // if let Some(layers) = room_config.layers.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         crate::patches::patch_set_layers(ps, area, layers.clone())
-    //     });
-    // }
-    //
-    // if let Some(layer_objs) = room_config.layer_objs.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         crate::patches::patch_move_objects(ps, area, layer_objs.clone())
-    //     });
-    // }
-    //
-    // if let Some(edit_objs) = room_config.edit_objs.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         patch_edit_objects(ps, area, edit_objs.clone())
-    //     });
-    // }
-    //
-    // if let Some(ids) = room_config.delete_ids.as_ref() {
-    //     patcher.add_scly_patch(*room, move |ps, area| {
-    //         crate::patches::patch_remove_ids(ps, area, ids.clone())
-    //     });
-    // }
-    // }
-
     patcher.run(gc_disc)?;
 
     Ok(())
@@ -96,5 +60,69 @@ fn patch_mlvl(resource: &mut Resource, room_name: String) -> Result<(), String> 
     println!("Patching room: {}", room_name);
     println!("Section count: {}", mrea.sections.len());
 
+    debug_assert!(mrea.world_geometry_section_idx < mrea.area_octree_section_idx);
+    debug_assert!(mrea.area_octree_section_idx < mrea.scly_section_idx);
+    debug_assert!(mrea.scly_section_idx < mrea.collision_section_idx);
+    debug_assert!(mrea.collision_section_idx < mrea.unknown_section_idx);
+    debug_assert!(mrea.unknown_section_idx < mrea.lights_section_idx);
+    debug_assert!(mrea.lights_section_idx < mrea.visibility_tree_section_idx);
+    debug_assert!(mrea.visibility_tree_section_idx < mrea.path_section_idx);
+
+    let sections: Vec<_> = mrea.sections.iter().collect();
+    let geometry_section = sections_to_bytes(
+        &sections[mrea.world_geometry_section_idx as usize..mrea.area_octree_section_idx as usize],
+    )?;
+    let arot = sections_to_bytes(
+        &sections[mrea.area_octree_section_idx as usize..mrea.scly_section_idx as usize],
+    )?;
+    let scly = sections_to_bytes(
+        &sections[mrea.scly_section_idx as usize..mrea.collision_section_idx as usize],
+    )?;
+    let collision = sections_to_bytes(
+        &sections[mrea.collision_section_idx as usize..mrea.unknown_section_idx as usize],
+    )?;
+    let unknown = sections_to_bytes(
+        &sections[mrea.unknown_section_idx as usize..mrea.lights_section_idx as usize],
+    )?;
+    let lights = sections_to_bytes(
+        &sections[mrea.lights_section_idx as usize..mrea.visibility_tree_section_idx as usize],
+    )?;
+    let visibility = sections_to_bytes(
+        &sections[mrea.visibility_tree_section_idx as usize..mrea.path_section_idx as usize],
+    )?;
+    let path = sections_to_bytes(&sections[mrea.path_section_idx as usize..])?;
+
+    println!(
+        "Section sizes: geometry: {}, arot: {}, scly: {}, collision: {}, unknown: {}, lights: {}, visibility: {}, path: {}",
+        geometry_section.len(),
+        arot.len(),
+        scly.len(),
+        collision.len(),
+        unknown.len(),
+        lights.len(),
+        visibility.len(),
+        path.len(),
+    );
+
+    // read the collision geometry
+    let mut area_reader = Reader::new(&collision[..]);
+    let area_collision = structs::AreaCollision::read_from(&mut area_reader, ());
+    println!(
+        "Area collision: {:?} verts {:?} edges {:?} tris",
+        area_collision.collision.vert_count,
+        area_collision.collision.edge_count,
+        area_collision.collision.tri_count
+    );
+
     Ok(())
+}
+
+fn sections_to_bytes(sections: &[LCow<structs::MreaSection>]) -> Result<Vec<u8>, String> {
+    let mut bytes = Vec::new();
+    for section in sections {
+        section
+            .write_to(&mut bytes)
+            .map_err(|e| format!("Failed to write section: {}", e))?;
+    }
+    Ok(bytes)
 }
