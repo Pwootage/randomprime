@@ -5,7 +5,7 @@ use reader_writer::{
     generic_array::GenericArray, typenum::*, IteratorArray, LCow, LazyArray, Readable, Reader,
     RoArray, RoArrayIter, Writable,
 };
-
+use crate::{AreaCollision, CmdlMaterialSet};
 use crate::scly::Scly;
 
 #[auto_struct(Readable, Writable)]
@@ -69,6 +69,27 @@ impl<'r> Mrea<'r> {
         self.sections.as_mut_vec()[self.scly_section_idx as usize].convert_to_scly()
     }
 
+    pub fn collision_section<'s>(&'s self) -> LCow<'s, AreaCollision<'r>> {
+        let section = self
+            .sections
+            .iter()
+            .nth(self.collision_section_idx as usize)
+            .unwrap();
+        match section {
+            LCow::Owned(MreaSection::Unknown(ref reader)) => LCow::Owned(reader.clone().read(())),
+            LCow::Borrowed(MreaSection::Unknown(ref reader)) => {
+                LCow::Owned(reader.clone().read(()))
+            }
+            LCow::Owned(MreaSection::Collision(collision)) => LCow::Owned(collision),
+            LCow::Borrowed(MreaSection::Collision(collision)) => LCow::Borrowed(collision),
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn collision_section_mut(&mut self) -> &mut AreaCollision<'r> {
+        self.sections.as_mut_vec()[self.collision_section_idx as usize].convert_to_collision()
+    }
+
     pub fn lights_section<'s>(&'s self) -> LCow<'s, Lights<'r>> {
         let section = self
             .sections
@@ -89,12 +110,35 @@ impl<'r> Mrea<'r> {
     pub fn lights_section_mut(&mut self) -> &mut Lights<'r> {
         self.sections.as_mut_vec()[self.lights_section_idx as usize].convert_to_lights()
     }
+
+    pub fn materials_section<'s>(&'s self) -> LCow<'s, CmdlMaterialSet<'r>> {
+        let section = self
+            .sections
+            .iter()
+            .nth(self.world_geometry_section_idx as usize)
+            .unwrap();
+        match section {
+            LCow::Owned(MreaSection::Unknown(ref reader)) => LCow::Owned(reader.clone().read(reader.len() as u32)),
+            LCow::Borrowed(MreaSection::Unknown(ref reader)) => {
+                LCow::Owned(reader.clone().read(reader.len() as u32))
+            }
+            LCow::Owned(MreaSection::Materials(materials)) => LCow::Owned(materials),
+            LCow::Borrowed(MreaSection::Materials(materials)) => LCow::Borrowed(materials),
+            _ => panic!(),
+        }
+    }
+
+    pub fn materials_section_mut(&mut self) -> &mut CmdlMaterialSet<'r> {
+        self.sections.as_mut_vec()[self.unknown_section_idx as usize].convert_to_materials()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum MreaSection<'r> {
     Unknown(Reader<'r>),
     Scly(Scly<'r>),
+    Collision(AreaCollision<'r>),
+    Materials(CmdlMaterialSet<'r>),
     Lights(Lights<'r>),
 }
 
@@ -122,6 +166,30 @@ impl<'r> MreaSection<'r> {
             _ => panic!(),
         }
     }
+
+    pub fn convert_to_collision(&mut self) -> &mut AreaCollision<'r> {
+        *self = match *self {
+            MreaSection::Unknown(ref reader) => MreaSection::Collision(reader.clone().read(())),
+            MreaSection::Collision(ref mut collision) => return collision,
+            _ => panic!(),
+        };
+        match *self {
+            MreaSection::Collision(ref mut collision) => collision,
+            _ => panic!(),
+        }
+    }
+
+    pub fn convert_to_materials(&mut self) -> &mut CmdlMaterialSet<'r> {
+        *self = match *self {
+            MreaSection::Unknown(ref reader) => MreaSection::Materials(reader.clone().read(reader.len() as u32)),
+            MreaSection::Materials(ref mut materials) => return materials,
+            _ => panic!(),
+        };
+        match *self {
+            MreaSection::Materials(ref mut materials) => materials,
+            _ => panic!(),
+        }
+    }
 }
 
 impl<'r> Readable<'r> for MreaSection<'r> {
@@ -136,7 +204,9 @@ impl<'r> Readable<'r> for MreaSection<'r> {
         match *self {
             MreaSection::Unknown(ref reader) => reader.len(),
             MreaSection::Scly(ref scly) => scly.size(),
+            MreaSection::Collision(ref collision) => collision.size(),
             MreaSection::Lights(ref lights) => lights.size(),
+            MreaSection::Materials(ref materials) => materials.size(),
         }
     }
 }
@@ -149,7 +219,9 @@ impl<'r> Writable for MreaSection<'r> {
                 Ok(reader.len() as u64)
             }
             MreaSection::Scly(ref scly) => scly.write_to(writer),
+            MreaSection::Collision(ref collision) => collision.write_to(writer),
             MreaSection::Lights(ref lights) => lights.write_to(writer),
+            MreaSection::Materials(ref materials) => materials.write_to(writer),
         }
     }
 }

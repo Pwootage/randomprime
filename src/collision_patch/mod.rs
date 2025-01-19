@@ -68,50 +68,56 @@ fn patch_mlvl(resource: &mut Resource, room_name: String) -> Result<(), String> 
     debug_assert!(mrea.lights_section_idx < mrea.visibility_tree_section_idx);
     debug_assert!(mrea.visibility_tree_section_idx < mrea.path_section_idx);
 
-    let sections: Vec<_> = mrea.sections.iter().collect();
-    let geometry_section = sections_to_bytes(
-        &sections[mrea.world_geometry_section_idx as usize..mrea.area_octree_section_idx as usize],
-    )?;
-    let arot = sections_to_bytes(
-        &sections[mrea.area_octree_section_idx as usize..mrea.scly_section_idx as usize],
-    )?;
-    let scly = sections_to_bytes(
-        &sections[mrea.scly_section_idx as usize..mrea.collision_section_idx as usize],
-    )?;
-    let collision = sections_to_bytes(
-        &sections[mrea.collision_section_idx as usize..mrea.unknown_section_idx as usize],
-    )?;
-    let unknown = sections_to_bytes(
-        &sections[mrea.unknown_section_idx as usize..mrea.lights_section_idx as usize],
-    )?;
-    let lights = sections_to_bytes(
-        &sections[mrea.lights_section_idx as usize..mrea.visibility_tree_section_idx as usize],
-    )?;
-    let visibility = sections_to_bytes(
-        &sections[mrea.visibility_tree_section_idx as usize..mrea.path_section_idx as usize],
-    )?;
-    let path = sections_to_bytes(&sections[mrea.path_section_idx as usize..])?;
+    // let sections: Vec<_> = mrea.sections.iter().collect();
+    // let geometry_section = sections_to_bytes(
+    //     &sections[mrea.world_geometry_section_idx as usize..mrea.area_octree_section_idx as usize],
+    // )?;
+    // let arot = sections_to_bytes(
+    //     &sections[mrea.area_octree_section_idx as usize..mrea.scly_section_idx as usize],
+    // )?;
+    // let scly = sections_to_bytes(
+    //     &sections[mrea.scly_section_idx as usize..mrea.collision_section_idx as usize],
+    // )?;
+    // let collision = sections_to_bytes(
+    //     &sections[mrea.collision_section_idx as usize..mrea.unknown_section_idx as usize],
+    // )?;
+    // let unknown = sections_to_bytes(
+    //     &sections[mrea.unknown_section_idx as usize..mrea.lights_section_idx as usize],
+    // )?;
+    // let lights = sections_to_bytes(
+    //     &sections[mrea.lights_section_idx as usize..mrea.visibility_tree_section_idx as usize],
+    // )?;
+    // let visibility = sections_to_bytes(
+    //     &sections[mrea.visibility_tree_section_idx as usize..mrea.path_section_idx as usize],
+    // )?;
+    // let path = sections_to_bytes(&sections[mrea.path_section_idx as usize..])?;
 
-    println!(
-        "Section sizes: geometry: {}, arot: {}, scly: {}, collision: {}, unknown: {}, lights: {}, visibility: {}, path: {}",
-        geometry_section.len(),
-        arot.len(),
-        scly.len(),
-        collision.len(),
-        unknown.len(),
-        lights.len(),
-        visibility.len(),
-        path.len(),
-    );
+    // println!(
+    //     "Section sizes: geometry: {}, arot: {}, scly: {}, collision: {}, unknown: {}, lights: {}, visibility: {}, path: {}",
+    //     geometry_section.len(),
+    //     arot.len(),
+    //     scly.len(),
+    //     collision.len(),
+    //     unknown.len(),
+    //     lights.len(),
+    //     visibility.len(),
+    //     path.len(),
+    // );
 
     // read the collision geometry
-    let mut area_reader = Reader::new(&collision[..]);
-    let area_collision = structs::AreaCollision::read_from(&mut area_reader, ());
+    // let mut area_reader = Reader::new(&collision[..]);
+    let area_collision = mrea.collision_section();
+    let existing_materials = mrea.materials_section();
     println!(
         "Area collision: {:?} verts {:?} edges {:?} tris",
         area_collision.collision.vert_count,
         area_collision.collision.edge_count,
         area_collision.collision.tri_count
+    );
+    println!(
+        "Existing materials: {:?} texture ids {:?} materials",
+        existing_materials.texture_ids.len(),
+        existing_materials.materials.len()
     );
 
     Ok(())
