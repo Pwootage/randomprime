@@ -1,15 +1,13 @@
-use crate::elevators::World;
-use crate::patch_config::RoomConfig;
 use crate::patcher::PrimePatcher;
 use crate::pickup_meta;
 use memmap::Mmap;
 use reader_writer::{FourCC, LCow, Readable, Reader, Writable};
-use resource_info_table::resource_info;
 use std::fs::File;
-use std::io;
 use std::io::{Read, Write};
 use std::time::Instant;
 use structs::Resource;
+
+mod model_creation;
 
 pub fn patch_iso_collision<T>(input_iso: Mmap, output_iso: File, mut pn: T) -> Result<(), String>
 where
@@ -44,7 +42,7 @@ fn build_and_run_collision_patches<'r>(gc_disc: &mut structs::GcDisc<'r>) -> Res
 
             patcher.add_resource_patch(
                 (&[pak_name.as_bytes()], mrea_id, FourCC::from_bytes(b"MREA")),
-                move |res| patch_mlvl(res, room_name.to_string()),
+                move |res| patch_mlvl(res, pak_name.to_string(), room_name.to_string()),
             );
         }
     }
@@ -54,10 +52,10 @@ fn build_and_run_collision_patches<'r>(gc_disc: &mut structs::GcDisc<'r>) -> Res
     Ok(())
 }
 
-fn patch_mlvl(resource: &mut Resource, room_name: String) -> Result<(), String> {
+fn patch_mlvl(resource: &mut Resource, pak_name: String, room_name: String) -> Result<(), String> {
     let mrea = resource.kind.as_mrea().unwrap();
 
-    println!("Patching room: {}", room_name);
+    println!("Patching room: {} {}", pak_name, room_name);
     println!("Section count: {}", mrea.sections.len());
 
     debug_assert!(mrea.world_geometry_section_idx < mrea.area_octree_section_idx);
@@ -119,6 +117,9 @@ fn patch_mlvl(resource: &mut Resource, room_name: String) -> Result<(), String> 
         existing_materials.texture_ids.len(),
         existing_materials.materials.len()
     );
+
+    // todo: don't hardcode these locations (and probably don't export them to disk by default)
+    model_creation::create_model_files(&area_collision, &pak_name, &room_name)?;
 
     Ok(())
 }
