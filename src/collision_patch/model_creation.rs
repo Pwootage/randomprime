@@ -173,11 +173,10 @@ fn create_textures(
         File::create(mtl_file).map_err(|e| format!("Failed to create mtl file: {}", e))?,
     );
 
-    // We want a 128x128 texture for each material; the room with the most is MQA at 77, and that should be fine on RAM
-    // 4 bit luma format * 128 * 128 = 8192 bytes * 77 = 630,784 bytes
+    // We want a 64x64 texture for each material; the room with the most is MQA at 77, and that should be fine on RAM
     // 4 bit luma format * 64 * 64 = 2048 bytes * 77 = 157,696 bytes
     // that's still probably ok on gcn *crosses fingers*
-    // we can always shrink later or something, if needed
+    // or else we'll have to de-dupe
     for i in 0..materials.len() {
         let mut texture = RgbaImage::new(tri_base.width(), tri_base.height());
         let material = materials[i];
@@ -186,6 +185,7 @@ fn create_textures(
         imageops::overlay(&mut texture, &tri_base, 0, 0);
 
         // figure out what we want to write
+        // TODO: use the same algo as the game
         let mut color = if material & CollisionMaterialFlags::Floor as u32 != 0 {
             (1.0, 0.5, 0.5, 1.0)
         } else if material & CollisionMaterialFlags::Wall as u32 != 0 {
@@ -215,7 +215,10 @@ fn create_textures(
         draw_text_line(&mut texture, &font, &line1, 6, 3);
 
         let line2 = get_text_line2(material);
-        draw_text_line(&mut texture, &font, &line2, 16, 13);
+        draw_text_line(&mut texture, &font, &line2, 11, 13);
+
+        let line3 = get_text_line3(material);
+        draw_text_line(&mut texture, &font, &line3, 16, 23);
 
         let out_file = format!("collision/{}/{}_material_{}.png", pak_name, room_name, i);
         texture
@@ -248,11 +251,29 @@ fn get_text_line1(collision_material_flags: u32) -> String {
 }
 
 fn get_text_line2(collision_material_flags: u32) -> String {
-   if collision_material_flags & CollisionMaterialFlags::ShootThru as u32 != 0 {
-        "ShootThru".to_string()
+    if collision_material_flags & CollisionMaterialFlags::Halfpipe as u32 != 0 {
+        "Pipe".to_string()
+    } else if collision_material_flags & CollisionMaterialFlags::ShootThru as u32 != 0 {
+        "Shoot".to_string()
+    } else if collision_material_flags & CollisionMaterialFlags::CameraThru as u32 != 0 {
+        "Cam".to_string()
+    } else if collision_material_flags & CollisionMaterialFlags::ScanThru as u32 != 0 {
+        "Scan".to_string()
     } else {
         "".to_string()
     }
+}
+
+fn get_text_line3(collision_material_flags: u32) -> String {
+    let mut ret = "".to_string();
+    if collision_material_flags & CollisionMaterialFlags::RedundantEdgeOrFlippedTri as u32 != 0 {
+        ret += "F";
+    }
+    if collision_material_flags & CollisionMaterialFlags::NoEdgeCollision as u32 != 0 {
+        ret += "E";
+    }
+
+    ret
 }
 
 fn draw_text_line(texture: &mut RgbaImage, font: &RgbaImage, line1: &str, x: u32, y: u32) {

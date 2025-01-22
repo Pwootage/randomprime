@@ -124,7 +124,7 @@ pub enum CollisionMaterialFlags {
 }
 
 impl CollisionMaterialFlags {
-    pub const MATERIAL_FLAGS: [CollisionMaterialFlags; 20] = [
+    pub const MATERIAL_FLAGS: [CollisionMaterialFlags; 19] = [
         CollisionMaterialFlags::Unknown,
         CollisionMaterialFlags::Stone,
         CollisionMaterialFlags::Metal,
@@ -138,7 +138,6 @@ impl CollisionMaterialFlags {
         CollisionMaterialFlags::LavaStone,
         CollisionMaterialFlags::Snow,
         CollisionMaterialFlags::MudSlow,
-        CollisionMaterialFlags::Halfpipe,
         CollisionMaterialFlags::Mud,
         CollisionMaterialFlags::Glass,
         CollisionMaterialFlags::Shield,
