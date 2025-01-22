@@ -186,15 +186,19 @@ fn create_textures(
         imageops::overlay(&mut texture, &tri_base, 0, 0);
 
         // figure out what we want to write
-        let color = if material & CollisionMaterialFlags::Floor as u32 != 0 {
-            (1.0, 0.5, 0.5)
+        let mut color = if material & CollisionMaterialFlags::Floor as u32 != 0 {
+            (1.0, 0.5, 0.5, 1.0)
         } else if material & CollisionMaterialFlags::Wall as u32 != 0 {
-            (1.0, 1.0, 1.0)
+            (1.0, 1.0, 1.0, 1.0)
         } else if material & CollisionMaterialFlags::Ceiling as u32 != 0 {
-            (0.5, 1.0, 0.5)
+            (0.5, 1.0, 0.5, 1.0)
         } else {
-            (1.0, 0.5, 0.5)
+            (1.0, 0.5, 0.5, 1.0)
         };
+
+        if material & CollisionMaterialFlags::ShootThru as u32 != 0 {
+            color.3 = 0.5;
+        }
 
         // change the color by multiplying the color by the color
         for pixel in texture.pixels_mut() {
@@ -203,12 +207,15 @@ fn create_textures(
                 (r as f32 * color.0) as u8,
                 (g as f32 * color.1) as u8,
                 (b as f32 * color.2) as u8,
-                a,
+                (a as f32 * color.3) as u8,
             ];
         }
 
         let line1 = get_text_line1(material);
         draw_text_line(&mut texture, &font, &line1, 6, 3);
+
+        let line2 = get_text_line2(material);
+        draw_text_line(&mut texture, &font, &line2, 16, 13);
 
         let out_file = format!("collision/{}/{}_material_{}.png", pak_name, room_name, i);
         texture
@@ -218,6 +225,8 @@ fn create_textures(
         writeln!(mtl_writer, "newmtl material_{}", i)
             .map_err(|e| format!("Failed to write mtl: {}", e))?;
         writeln!(mtl_writer, "map_Kd {}_material_{}.png", room_name, i)
+            .map_err(|e| format!("Failed to write mtl: {}", e))?;
+        writeln!(mtl_writer, "map_d {}_material_{}.png", room_name, i)
             .map_err(|e| format!("Failed to write mtl: {}", e))?;
     }
 
@@ -236,6 +245,14 @@ fn get_text_line1(collision_material_flags: u32) -> String {
         }
     }
     "???".to_string()
+}
+
+fn get_text_line2(collision_material_flags: u32) -> String {
+   if collision_material_flags & CollisionMaterialFlags::ShootThru as u32 != 0 {
+        "ShootThru".to_string()
+    } else {
+        "".to_string()
+    }
 }
 
 fn draw_text_line(texture: &mut RgbaImage, font: &RgbaImage, line1: &str, x: u32, y: u32) {
