@@ -129,7 +129,7 @@ impl<'r> Mrea<'r> {
     }
 
     pub fn materials_section_mut(&mut self) -> &mut CmdlMaterialSet<'r> {
-        self.sections.as_mut_vec()[self.unknown_section_idx as usize].convert_to_materials()
+        self.sections.as_mut_vec()[self.world_geometry_section_idx as usize].convert_to_materials()
     }
 }
 
