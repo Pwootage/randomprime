@@ -1,7 +1,7 @@
 use std::{panic, process::Command};
 
 use clap::Format;
-use randomprime::{collision_patch, patch_config::PatchConfig, patches, reader_writer, structs};
+use randomprime::{collision_patch, patch_config::PatchConfig, reader_writer, structs};
 
 struct ProgressNotifier {
     total_size: usize,
