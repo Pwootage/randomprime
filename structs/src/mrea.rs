@@ -1,3 +1,4 @@
+use std::cmp::Ord;
 use std::io;
 
 use auto_struct_macros::auto_struct;
@@ -131,6 +132,27 @@ impl<'r> Mrea<'r> {
     pub fn materials_section_mut(&mut self) -> &mut CmdlMaterialSet<'r> {
         self.sections.as_mut_vec()[self.world_geometry_section_idx as usize].convert_to_materials()
     }
+
+    pub fn arot_section<'s>(&'s self) -> LCow<'s, AROT<'r>> {
+        let section = self
+            .sections
+            .iter()
+            .nth(self.area_octree_section_idx as usize)
+            .unwrap();
+        match section {
+            LCow::Owned(MreaSection::Unknown(ref reader)) => LCow::Owned(reader.clone().read(())),
+            LCow::Borrowed(MreaSection::Unknown(ref reader)) => {
+                LCow::Owned(reader.clone().read(()))
+            }
+            LCow::Owned(MreaSection::Arot(arot)) => LCow::Owned(arot),
+            LCow::Borrowed(MreaSection::Arot(arot)) => LCow::Borrowed(arot),
+            _ => panic!(),
+        }
+    }
+
+    pub fn arot_section_mut(&mut self) -> &mut AROT<'r> {
+        self.sections.as_mut_vec()[self.area_octree_section_idx as usize].convert_to_arot()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -139,6 +161,7 @@ pub enum MreaSection<'r> {
     Scly(Scly<'r>),
     Collision(AreaCollision<'r>),
     Materials(CmdlMaterialSet<'r>),
+    Arot(AROT<'r>),
     Lights(Lights<'r>),
 }
 
@@ -190,6 +213,18 @@ impl<'r> MreaSection<'r> {
             _ => panic!(),
         }
     }
+
+    pub fn convert_to_arot(&mut self) -> &mut AROT<'r> {
+        *self = match *self {
+            MreaSection::Unknown(ref reader) => MreaSection::Arot(reader.clone().read(())),
+            MreaSection::Arot(ref mut arot) => return arot,
+            _ => panic!(),
+        };
+        match *self {
+            MreaSection::Arot(ref mut arot) => arot,
+            _ => panic!(),
+        }
+    }
 }
 
 impl<'r> Readable<'r> for MreaSection<'r> {
@@ -207,6 +242,7 @@ impl<'r> Readable<'r> for MreaSection<'r> {
             MreaSection::Collision(ref collision) => collision.size(),
             MreaSection::Lights(ref lights) => lights.size(),
             MreaSection::Materials(ref materials) => materials.size(),
+            MreaSection::Arot(ref arot) => arot.size(),
         }
     }
 }
@@ -222,6 +258,7 @@ impl<'r> Writable for MreaSection<'r> {
             MreaSection::Collision(ref collision) => collision.write_to(writer),
             MreaSection::Lights(ref lights) => lights.write_to(writer),
             MreaSection::Materials(ref materials) => materials.write_to(writer),
+            MreaSection::Arot(ref arot) => arot.write_to(writer),
         }
     }
 }
@@ -257,4 +294,47 @@ pub struct LightLayer {
     pub unknown2: f32,
     pub falloff_type: u32,
     pub unknown3: f32,
+}
+
+#[auto_struct(Readable, Writable)]
+#[derive(Debug, Clone)]
+pub struct AROT<'r> {
+    #[auto_struct(expect = 0x41524F54)]
+    pub magic: u32,
+    #[auto_struct(expect = 1)]
+    pub version: u32,
+
+    pub bitmap_count: u32,
+    pub bitmap_bit_count: u32,
+    pub node_count: u32,
+    pub aabb: GenericArray<f32, U6>,
+
+    #[auto_struct(pad_align = 32)]
+    _pad: (),
+
+    #[auto_struct(init = ((bitmap_count * bitmap_bit_count.div_ceil(32)) as usize, ()))]
+    pub bitmap_data: RoArray<'r, u32>,
+    #[auto_struct(init = (node_count as usize, ()))]
+    pub node_indirection_tale: RoArray<'r, u32>,
+    #[auto_struct(init = (node_count as usize, ()))]
+    pub nodes: LazyArray<'r, AROTNode<'r>>,
+}
+
+#[auto_struct(Readable, Writable)]
+#[derive(Debug, Clone)]
+pub struct AROTNode<'r> {
+    pub bitmap_index: u16,
+    pub dimensional_flags: u16,
+    #[auto_struct(init = (flag_length(dimensional_flags) as usize, ()))]
+    pub child_indicies: LazyArray<'r, u16>
+}
+
+fn flag_length(dimensional_flags: u16) -> u32 {
+    if dimensional_flags == 0 {
+        return 0;
+    }
+    assert_eq!(dimensional_flags & 0xFFF8, 0);
+    let ones = dimensional_flags.count_ones();
+    assert!(ones <= 3);
+    2u32.pow(ones)
 }
